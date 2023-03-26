@@ -19,8 +19,6 @@ create `auth.json`:
 
 ````
 
-````
-
 npm install
 
 node index.js
