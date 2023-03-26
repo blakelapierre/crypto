@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+  <head>
+    <title>crypto accounts</title>
+
+    <script>
+      const E = (...args) => document.createElement(...args);
+      const ac = (e1, e2) => e1.appendChild(e2);
+
+      const ws = new WebSocket(`ws://${window.location.hostname}:8081`);
+
+      const exchangeEls = {};
+      ws.addEventListener('message', event => {
+        const message = JSON.parse(event.data);
+        console.log(message);
+
+        const [messageType, data] = message;
+
+        switch (messageType) {
+          case 'exchanges':
+            const eEl = E('exchanges');
+
+            data.forEach(exchange => {
+              const el = E('exchange');
+              el.innerText = exchange.id;
+
+              exchangeEls[exchange.id] = el;
+              ac(eEl, el);
+            });
+
+            ac(document.body, eEl);
+            break;
+          case 'balances':
+            const id = data.exchange;
+            const el = exchangeEls[id];
+
+            const bEl = E('balances');
+
+            el.innerHTML = '';
+
+            Object.keys(data.balances)
+                  .forEach(coin => {
+                    const amount = data.balances[coin];
+                    const c = E('coin');
+                    c.innerText = `${coin} free: ${amount.available} used: ${amount.frozen} total: ${amount.available + amount.frozen}`;
+                    ac(bEl, c);
+                  });
+
+            ac(el, bEl);
+        }
+      });
+    </script>
+
+    <style>
+      exchanges {
+        display: flex;
+      }
+
+      exchange {
+        display: block;
+      }
+
+      balances {
+        display: block;
+      }
+
+      coin {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+  </body>
+</html>

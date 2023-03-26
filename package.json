@@ -1,0 +1,23 @@
+{
+  "name": "crypto-blake",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blakelapierre/crypto.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/blakelapierre/crypto/issues"
+  },
+  "homepage": "https://github.com/blakelapierre/crypto#readme",
+  "dependencies": {
+    "ccxt": "^3.0.35",
+    "ws": "^8.13.0"
+  }
+}
