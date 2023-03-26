@@ -23,6 +23,8 @@ const exchanges = exchangesArray.reduce((acc, ex) => {
 const accounts = auth.exchanges
 
 const balances = {};
+const markets = {};
+const tickers = {};
 
 const wss = new ws.WebSocketServer({ port: 8081 });
 
@@ -53,6 +55,20 @@ wss.on('connection', function connection(ws) {
 
       if (b) ws.send(JSON.stringify(createBalancesMessage(nickname, b)));
     });
+
+  Object.keys(markets)
+    .forEach(name => {
+      const m = markets[name];
+
+      if (m) ws.send(JSON.stringify(createMarketsMessage(name, m)));
+    });
+
+  Object.keys(tickers)
+    .forEach(name => {
+      const t = tickers[name];
+
+      if (t) ws.send(JSON.stringify(createTickersMessage(name, t)));
+    });
 });
 
 const index = fs.readFileSync('index.html');
@@ -68,14 +84,32 @@ console.log('httpServer listening on', httpServer.port);
 console.log('wss listening on', wss.port);
 
 exchangesArray.forEach(ex => {
-  const {id, nickname} = ex;
-  ex.api.fetchBalance()
+  const {id, nickname, api} = ex;
+  const name = nickname || id;
+
+  console.log('fetching', nickname || id, 'balances');
+  api.fetchBalance()
     .then(data => {
-      const name = nickname || id;
       balances[name] = data;
       broadcast(createBalancesMessage(name, data));
     })
-    .catch(err => console.log('error fetching balances', ex.nickname || ex.id, err));
+    .catch(err => console.log('error fetching balances', name, err));
+
+  console.log('fetching', name, 'markets');
+  api.fetchMarkets()
+    .then(data => {
+      markets[name] = data;
+      broadcast(createMarketsMessage(name, data));
+    })
+    .catch(err => console.log('error fetching markets', name, err));
+
+  console.log('fetching', name, 'tickers');
+  api.fetchTickers()
+    .then(data => {
+      tickers[name] = data;
+      broadcast(createTickersMessage(name, data));
+    })
+    .catch(err => console.log('error fetching tickets', name, err));
 });
 
 function broadcast(data) {
@@ -94,5 +128,19 @@ function createBalancesMessage(exchange, {total, free, used}) {
       free,
       used
     }
-  }]
+  }];
+}
+
+function createMarketsMessage(exchange, markets) {
+  return ['markets', {
+    exchange,
+    markets
+  }];
+}
+
+function createTickersMessage(exchange, tickers) {
+  return ['tickers', {
+    exchange,
+    tickers
+  }];
 }

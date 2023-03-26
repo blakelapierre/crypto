@@ -22,6 +22,8 @@
       const ws = new WebSocket(`ws://${window.location.hostname}:8081`);
 
       const exchangeEls = {};
+
+      let balances = {}, markets = {}, tickers = {};
       ws.addEventListener('message', event => {
         const message = JSON.parse(event.data);
         console.log(message);
@@ -43,30 +45,48 @@
             ac(document.body, eEl);
             break;
           case 'balances':
-            const id = data.exchange;
-            const el = exchangeEls[id];
+            balances[data.exchange] = data;
 
-            const bEl = E('balances');
+            buildExchange(data.exchange);
+            break;
+          case 'markets':
+            markets[data.exchange] = data;
 
-            el.innerHTML = '';
+            break;
+          case 'tickers':
+            tickers[data.exchange] = data;
 
-            const name = E('exchange');
-            name.innerText = id;
-            ac(el, name);
-
-            const table = createBalanceTable(data.balances, 'total');
-            ac(el, table);
-
-            ac(el, bEl);
+            buildExchange(data.exchange);
+            break;
         }
       });
 
-      function createBalanceTable({total, free, used}, sortBy) {
+      function buildExchange(exchange) {
+        const id = exchange;
+        const el = exchangeEls[id];
+
+        const bEl = E('balances');
+
+        el.innerHTML = '';
+
+        const name = E('exchange');
+        name.innerText = id;
+        ac(el, name);
+
+        const table = createBalanceTable(id, balances[id].balances, '$');
+        ac(el, table);
+
+        ac(el, bEl);
+      }
+
+      function createBalanceTable(exchange, {total, free, used}, sortBy) {
         const table = E('table');
         const head = E('thead');
         const body = E('tbody');
+        const foot = E('tfoot');
         ac(table, head);
         ac(table, body);
+        ac(table, foot);
 
         const row = E('tr');
 
@@ -74,10 +94,35 @@
         ac(row, TH('total'));
         ac(row, TH('free'));
         ac(row, TH('used'));
+        ac(row, TH('$ value'));
+        ac(row, TH('portfolio %'));
         ac(head, row);
 
 
         let keys = Object.keys(total);
+
+        let dollarValues = {};
+        let totalDollarValue = 0;
+        keys.forEach(key => {
+          const t = tickers[exchange];
+          if (!t) return;
+          const ticker = t.tickers[`${key}/USD`] || t.tickers[`${key}/USDT`];
+
+          if (ticker) {
+            const value = (total[key] || 0) * ticker.bid;
+            dollarValues[key] = value;
+            totalDollarValue += value;
+          }
+          else if (key === 'USDT' || key === 'USD') {
+            const value = total[key] || 0;
+            dollarValues[key] = value;
+            totalDollarValue += value;
+          }
+          else {
+            dollarValues[key] = '';
+          }
+        });
+
 
         if (sortBy) keys = keys.sort((a, b) => {
           switch (sortBy) {
@@ -85,19 +130,39 @@
             case 'total': return total[a] > total[b] ? -1 : 1;
             case 'free': return free[a] > free[b] ? -1 : 1;
             case 'used': return used[a] > used[b] ? -1 : 1;
+            case '$': return dollarValues[a] > dollarValues[b] ? -1 : 1;
           }
         });
 
         keys.forEach(key => {
           const tr = E('tr');
 
+          
+
           ac(tr, TD(key));
           ac(tr, TD(total[key] || 0));
           ac(tr, TD(free[key] || (free[key] === undefined ? total[key] : 0)));
           ac(tr, TD(used[key] || 0));
+          ac(tr, TD('$' + (dollarValues[key] || 0).toFixed(2)));
+          
+
+          if (totalDollarValue > 0) ac(tr, TD((dollarValues[key] / totalDollarValue * 100).toFixed(2) + '%')
+            );
+          else ac(tr, TD(''));
 
           ac(body, tr);
         });
+
+        const frow = E('tr');
+
+        ac(foot, frow);
+
+        ac(frow, TH('TOTAL:'));
+        ac(frow, TH(''));
+        ac(frow, TH(''));
+        ac(frow, TH(''));
+        ac(frow, TH('$' + totalDollarValue.toFixed(2)));
+        ac(frow, TH(''));
 
         return table;
       }
