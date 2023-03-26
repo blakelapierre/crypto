@@ -2,7 +2,7 @@ create `auth.json`:
 
 ````
 {
-	"exchanges": [{
+  "exchanges": [{
     "id": "coinbase",
     "enabled": false,
     "auth": {
