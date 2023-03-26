@@ -8,16 +8,34 @@ const auth = JSON.parse(fs.readFileSync('auth.json').toString());
 
 console.log(auth);
 
-const exchanges = 
+const exchangesArray = 
   auth.exchanges
     .filter(({enabled}) => enabled)
-    .map(({id, enabled, auth}) => {
-      return new ccxt[id](auth);
+    .map(({id, nickname, auth}) => {
+      return {nickname, id, api: new ccxt[id](auth)};
     });
+
+const exchanges = exchangesArray.reduce((acc, ex) => {
+  acc[ex.nickname] = ex;
+  return acc;
+}, {});
+
+const accounts = auth.exchanges
 
 const balances = {};
 
 const wss = new ws.WebSocketServer({ port: 8081 });
+
+if (exchanges['coinbase main']) {
+  console.log(exchanges['coinbase main'].fetchAccounts)
+  exchanges['coinbase main'].api.fetch_accounts()
+    .then(data => {
+      console.log('coinbase accounts', data);
+    })
+    .catch(error => {
+      console.log('error fetching coinbase accounts', error);
+    });
+}
 
 wss.on('connection', function connection(ws) {
   console.log('ws connected');
@@ -27,13 +45,13 @@ wss.on('connection', function connection(ws) {
     console.log('received: %s', data);
   });
 
-  ws.send(JSON.stringify(['exchanges', exchanges.map(({id}) => ({id}))]));
+  ws.send(JSON.stringify(['exchanges', exchangesArray.map(({nickname, id}) => ({nickname: nickname || id}))]));
 
   Object.keys(balances)
-    .forEach(exchangeId => {
-      const b = balances[exchangeId];
+    .forEach(nickname => {
+      const b = balances[nickname];
 
-      if (b) ws.send(JSON.stringify(['balanaces', {exchange: exchangeId, balances: b}]))
+      if (b) ws.send(JSON.stringify(createBalancesMessage(nickname, b)));
     });
 });
 
@@ -49,14 +67,15 @@ httpServer.listen({port: 8080});
 console.log('httpServer listening on', httpServer.port);
 console.log('wss listening on', wss.port);
 
-exchanges.forEach(ex => {
-  ex.fetchBalance()
+exchangesArray.forEach(ex => {
+  const {id, nickname} = ex;
+  ex.api.fetchBalance()
     .then(data => {
-      console.log(data);
-      balances[ex.id] = data.info.data;
-      broadcast(['balances', {exchange: ex.id, balances: data.info.data}])
+      const name = nickname || id;
+      balances[name] = data;
+      broadcast(createBalancesMessage(name, data));
     })
-    .catch(err => console.log('error fetching balances', ex.id, err));
+    .catch(err => console.log('error fetching balances', ex.nickname || ex.id, err));
 });
 
 function broadcast(data) {
@@ -65,4 +84,15 @@ function broadcast(data) {
       client.send(JSON.stringify(data));
     }
   });
+}
+
+function createBalancesMessage(exchange, {total, free, used}) {
+  return ['balances', {
+    exchange,
+    balances: {
+      total,
+      free,
+      used
+    }
+  }]
 }

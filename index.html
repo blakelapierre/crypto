@@ -7,6 +7,18 @@
       const E = (...args) => document.createElement(...args);
       const ac = (e1, e2) => e1.appendChild(e2);
 
+      const TH = header => {
+        const th = E('th');
+        th.innerText = header;
+        return th;
+      };
+
+      const TD = text => {
+        const td = E('td');
+        td.innerText = text;
+        return td;
+      };
+
       const ws = new WebSocket(`ws://${window.location.hostname}:8081`);
 
       const exchangeEls = {};
@@ -22,9 +34,9 @@
 
             data.forEach(exchange => {
               const el = E('exchange');
-              el.innerText = exchange.id;
+              el.innerText = exchange.nickname;
 
-              exchangeEls[exchange.id] = el;
+              exchangeEls[exchange.nickname] = el;
               ac(eEl, el);
             });
 
@@ -38,17 +50,57 @@
 
             el.innerHTML = '';
 
-            Object.keys(data.balances)
-                  .forEach(coin => {
-                    const amount = data.balances[coin];
-                    const c = E('coin');
-                    c.innerText = `${coin} free: ${amount.available} used: ${amount.frozen} total: ${amount.available + amount.frozen}`;
-                    ac(bEl, c);
-                  });
+            const name = E('exchange');
+            name.innerText = id;
+            ac(el, name);
+
+            const table = createBalanceTable(data.balances, 'total');
+            ac(el, table);
 
             ac(el, bEl);
         }
       });
+
+      function createBalanceTable({total, free, used}, sortBy) {
+        const table = E('table');
+        const head = E('thead');
+        const body = E('tbody');
+        ac(table, head);
+        ac(table, body);
+
+        const row = E('tr');
+
+        ac(row, TH('coin'));
+        ac(row, TH('total'));
+        ac(row, TH('free'));
+        ac(row, TH('used'));
+        ac(head, row);
+
+
+        let keys = Object.keys(total);
+
+        if (sortBy) keys = keys.sort((a, b) => {
+          switch (sortBy) {
+            case 'key': return a > b ? -1 : 1;
+            case 'total': return total[a] > total[b] ? -1 : 1;
+            case 'free': return free[a] > free[b] ? -1 : 1;
+            case 'used': return used[a] > used[b] ? -1 : 1;
+          }
+        });
+
+        keys.forEach(key => {
+          const tr = E('tr');
+
+          ac(tr, TD(key));
+          ac(tr, TD(total[key] || 0));
+          ac(tr, TD(free[key] || (free[key] === undefined ? total[key] : 0)));
+          ac(tr, TD(used[key] || 0));
+
+          ac(body, tr);
+        });
+
+        return table;
+      }
     </script>
 
     <style>
@@ -58,6 +110,11 @@
 
       exchange {
         display: block;
+
+        padding: 0.25em;
+        margin: 0.25em;
+
+        background-color: #eee;
       }
 
       balances {
@@ -66,6 +123,24 @@
 
       coin {
         display: block;
+      }
+
+      exchange table {
+        padding: 0.1em;
+
+        border: solid 1px #999;
+
+        border-collapse: collapse;
+      }
+
+      exchange table tr {
+        border-bottom: solid 1px #333;
+      }
+
+      exchange table td {
+        padding: 0.25em;
+
+        border-left: solid 1px #999;
       }
     </style>
   </head>
