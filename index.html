@@ -23,7 +23,7 @@
 
       const exchangeEls = {};
 
-      let balances = {}, markets = {}, tickers = {};
+      let balances = {}, markets = {}, tickers = {}, targets = {}, targetEls = {};
       ws.addEventListener('message', event => {
         const message = JSON.parse(event.data);
         console.log(message);
@@ -34,12 +34,15 @@
           case 'exchanges':
             const eEl = E('exchanges');
 
-            data.forEach(exchange => {
+            data.forEach(({nickname}) => {
               const el = E('exchange');
-              el.innerText = exchange.nickname;
+              el.innerText = nickname;
 
-              exchangeEls[exchange.nickname] = el;
+              exchangeEls[nickname] = el;
               ac(eEl, el);
+
+              targets[nickname] = {};
+              targetEls[nickname] = {};
             });
 
             ac(document.body, eEl);
@@ -69,9 +72,19 @@
 
         el.innerHTML = '';
 
+        const header = E('exchange-header');
+
         const name = E('exchange');
         name.innerText = id;
-        ac(el, name);
+
+        const targetPortfolio = E('select');
+        const label = E('label');
+        label.innerText = 'Target Porfolios:';
+
+        ac(header, name);
+        ac(header, label);
+        ac(header, targetPortfolio);
+        ac(el, header);
 
         const table = createBalanceTable(id, balances[id].balances, '$');
         ac(el, table);
@@ -96,12 +109,15 @@
         ac(row, TH('used'));
         ac(row, TH('$ value'));
         ac(row, TH('portfolio %'));
+        ac(row, TH('target %'));
+        ac(row, TH('$ diff'));
         ac(head, row);
 
 
         let keys = Object.keys(total);
 
         let dollarValues = {};
+        const portfolioWeight = {};
         let totalDollarValue = 0;
         keys.forEach(key => {
           const t = tickers[exchange];
@@ -123,6 +139,12 @@
           }
         });
 
+        if (totalDollarValue > 0) {
+          keys.forEach(key => {
+            portfolioWeight[key] = dollarValues[key] / totalDollarValue;
+          });
+        }
+
 
         if (sortBy) keys = keys.sort((a, b) => {
           switch (sortBy) {
@@ -134,10 +156,10 @@
           }
         });
 
+        const targetDiffEls = {};
+
         keys.forEach(key => {
           const tr = E('tr');
-
-          
 
           ac(tr, TD(key));
           ac(tr, TD(total[key] || 0));
@@ -146,12 +168,74 @@
           ac(tr, TD('$' + (dollarValues[key] || 0).toFixed(2)));
           
 
-          if (totalDollarValue > 0) ac(tr, TD((dollarValues[key] / totalDollarValue * 100).toFixed(2) + '%')
-            );
+          if (totalDollarValue > 0) ac(tr, TD(parseFloat(portfolioWeight[key] * 100).toFixed(2) + '%'));
           else ac(tr, TD(''));
+
+          const target = E('input');
+          target.type = 'number';
+          target.min = 0;
+          target.max = 100;
+          target.step = 0.01;
+
+          targetEls[exchange][key] = target;
+
+          target.addEventListener('change', event => {
+            const newValue = event.target.value;
+            const diff = targets[exchange][key] - newValue;
+
+            const weightsWithoutKey = {};
+            const totalWithoutKey = 100 - targets[exchange][key];
+            targets[exchange][key] = newValue;
+
+            keys.forEach(pKey => {
+              if (key === pKey) return;
+              weightsWithoutKey[pKey] = targets[exchange][pKey] / totalWithoutKey;
+            });
+
+            keys.forEach(pKey => {
+              if (key === pKey) return;
+              const t = (targets[exchange][pKey] = parseFloat(targets[exchange][pKey]) + diff * weightsWithoutKey[pKey]);
+              targetEls[exchange][pKey].value = t;
+
+              const targetDiff = dollarValues[pKey] - targets[exchange][pKey] / 100 * totalDollarValue ;
+
+              targetDiffEls[pKey].innerText = `$${-targetDiff.toFixed(2)}`;
+            });
+
+            const targetTotal = keys.reduce((acc, key) => acc + parseFloat(targets[exchange][key]), 0);
+
+            targetTotalEl.innerText = targetTotal.toFixed(2) + '%';
+
+            const targetDiff = dollarValues[key] - targets[exchange][key] / 100 * totalDollarValue ;
+
+            targetDiffEls[key].innerText = `$${-targetDiff.toFixed(2)}`;
+
+          });
+
+          if (totalDollarValue > 0) {
+            targets[exchange][key] = targets[exchange][key] || (dollarValues[key] / totalDollarValue * 100).toFixed(2);
+            target.value = targets[exchange][key];
+          }
+
+          
+
+          ac(tr, target);
+
+
+          if (totalDollarValue > 0) {
+            const targetDiff = dollarValues[key] - targets[exchange][key] / 100 * totalDollarValue ;
+            const targetDiffEl = TD(`$${-targetDiff.toFixed(2)}`);
+            targetDiffEls[key] = targetDiffEl;
+            ac(tr, targetDiffEl);
+          }
 
           ac(body, tr);
         });
+
+        const portfolioTotal = keys.reduce((acc, key) => acc + parseFloat(portfolioWeight[key]), 0);
+        const targetTotal = keys.reduce((acc, key) => acc + parseFloat(targets[exchange][key]), 0);
+
+        const targetTotalEl = TH(targetTotal.toFixed(2) + '%');
 
         const frow = E('tr');
 
@@ -162,7 +246,8 @@
         ac(frow, TH(''));
         ac(frow, TH(''));
         ac(frow, TH('$' + totalDollarValue.toFixed(2)));
-        ac(frow, TH(''));
+        ac(frow, TH((portfolioTotal * 100).toFixed(2) + '%'));
+        ac(frow, targetTotalEl);
 
         return table;
       }
