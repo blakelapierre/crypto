@@ -110,6 +110,7 @@
         ac(row, TH('$ value'));
         ac(row, TH('portfolio %'));
         ac(row, TH('target %'));
+        ac(row, TH('target weight'));
         ac(row, TH('$ diff'));
         ac(head, row);
 
@@ -148,11 +149,15 @@
 
         if (sortBy) keys = keys.sort((a, b) => {
           switch (sortBy) {
-            case 'key': return a > b ? -1 : 1;
-            case 'total': return total[a] > total[b] ? -1 : 1;
-            case 'free': return free[a] > free[b] ? -1 : 1;
-            case 'used': return used[a] > used[b] ? -1 : 1;
-            case '$': return dollarValues[a] > dollarValues[b] ? -1 : 1;
+            case 'key': return a < b ? -1 : 1;
+            case 'total': 
+              return total[a] > total[b] ? -1 : (total[a] < total[b] ? 1 : (a < b ? -1 : 1));
+            case 'free': 
+              return free[a] > free[b] ? -1 : (free[a] < free[b] ? 1 : (a < b ? -1 : 1));
+            case 'used': 
+              return used[a] > used[b] ? -1 : (used[a] < used[b] ? 1 : (a < b ? -1 : 1));
+            case '$': 
+              return dollarValues[a] > dollarValues[b] ? -1 : (dollarValues[a] < dollarValues[b] ? 1 : (a < b ? -1 : 1));
           }
         });
 
@@ -168,7 +173,21 @@
           ac(tr, TD('$' + (dollarValues[key] || 0).toFixed(2)));
           
 
-          if (totalDollarValue > 0) ac(tr, TD(parseFloat(portfolioWeight[key] * 100).toFixed(2) + '%'));
+          if (totalDollarValue > 0) {
+            const weight = parseFloat(portfolioWeight[key] * 100).toFixed(2);
+            const weightEl = TD('');
+
+            const weightDisplayEl = E('weight');
+            weightDisplayEl.style.width = `${weight}%`;
+
+            const weightSpanEl = E('div');
+            weightSpanEl.innerText = weight + '%';
+
+            ac(weightEl, weightSpanEl);
+            ac(weightEl, weightDisplayEl);
+
+            ac(tr, weightEl);
+          }
           else ac(tr, TD(''));
 
           const target = E('input');
@@ -217,9 +236,24 @@
             target.value = targets[exchange][key];
           }
 
-          
+          const targetEl = TD('');
+          ac(targetEl, target);
 
-          ac(tr, target);
+          ac(tr, targetEl);
+
+
+          const targetWeightInput = E('input');
+          targetWeightInput.type = 'number';
+          targetWeightInput.min = 0;
+          targetWeightInput.max = 99999999;
+          targetWeightInput.step = 1;
+
+          targetWeightInput.value = 0;
+
+          const targetWeightEl = TD('');
+          ac(targetWeightEl, targetWeightInput);
+
+          ac(tr, targetWeightEl);
 
 
           if (totalDollarValue > 0) {
@@ -228,6 +262,10 @@
             targetDiffEls[key] = targetDiffEl;
             ac(tr, targetDiffEl);
           }
+          else {
+            ac(tr, TD(''));
+          }
+
 
           ac(body, tr);
         });
@@ -288,9 +326,21 @@
       }
 
       exchange table td {
+        position: relative;
+
         padding: 0.25em;
 
         border-left: solid 1px #999;
+      }
+
+      weight {
+        display: block;
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 0%;
+        background-color: rgba(0.8, 0.8, 0.8, 0.2);
       }
     </style>
   </head>

@@ -83,34 +83,40 @@ httpServer.listen({port: 8080});
 console.log('httpServer listening on', httpServer.port);
 console.log('wss listening on', wss.port);
 
-exchangesArray.forEach(ex => {
-  const {id, nickname, api} = ex;
-  const name = nickname || id;
+loadExchangeData();
 
-  console.log('fetching', nickname || id, 'balances');
-  api.fetchBalance()
-    .then(data => {
-      balances[name] = data;
-      broadcast(createBalancesMessage(name, data));
-    })
-    .catch(err => console.log('error fetching balances', name, err));
+setInterval(loadExchangeData, 60 * 1000);
 
-  console.log('fetching', name, 'markets');
-  api.fetchMarkets()
-    .then(data => {
-      markets[name] = data;
-      broadcast(createMarketsMessage(name, data));
-    })
-    .catch(err => console.log('error fetching markets', name, err));
+function loadExchangeData() {
+  exchangesArray.forEach(ex => {
+    const {id, nickname, api} = ex;
+    const name = nickname || id;
 
-  console.log('fetching', name, 'tickers');
-  api.fetchTickers()
-    .then(data => {
-      tickers[name] = data;
-      broadcast(createTickersMessage(name, data));
-    })
-    .catch(err => console.log('error fetching tickets', name, err));
-});
+    console.log('fetching', nickname || id, 'balances');
+    api.fetchBalance()
+      .then(data => {
+        balances[name] = data;
+        broadcast(createBalancesMessage(name, data));
+      })
+      .catch(err => console.log('error fetching balances', name, err));
+
+    console.log('fetching', name, 'markets');
+    api.fetchMarkets()
+      .then(data => {
+        markets[name] = data;
+        broadcast(createMarketsMessage(name, data));
+      })
+      .catch(err => console.log('error fetching markets', name, err));
+
+    console.log('fetching', name, 'tickers');
+    api.fetchTickers()
+      .then(data => {
+        tickers[name] = data;
+        broadcast(createTickersMessage(name, data));
+      })
+      .catch(err => console.log('error fetching tickets', name, err));
+  });
+}
 
 function broadcast(data) {
   wss.clients.forEach(function each(client) {
