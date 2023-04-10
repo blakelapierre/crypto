@@ -62,7 +62,6 @@
 
       ws.addEventListener('message', event => {
         const message = JSON.parse(event.data);
-        console.log(message);
 
         const [messageType, data] = message;
 
@@ -442,7 +441,7 @@
 
 
             const side = targetDiff > 0 ? 'sell' : 'buy';
-            const price = side === 'buy' ? ticker.bid : ticker.ask;
+            const price = side === 'buy' ? ticker.ask : ticker.bid;
             const amount = Math.abs(targetDiff) / price;
 
             const message = [side, amount.toFixed(4), `${key}/${base}`, price, exchange];
