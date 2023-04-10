@@ -58,10 +58,9 @@ wss.on('connection', function connection(ws) {
         .catch(err => console.log('buy err', err));
       break;
     case 'sell':
-      const ret = exchanges[exchange].api.createOrder(market, 'limit', 'sell', amount, price)
-        // .then(ret => console.log('sell ret', ret))
-        // .catch(err => console.log('sell err', err));
-      console.log('sell ret', ret);
+      exchanges[exchange].api.createOrder(market, 'limit', 'sell', amount, price)
+        .then(ret => console.log('sell ret', ret))
+        .catch(err => console.log('sell err', err));
       break;
     }
   });
