@@ -105,6 +105,33 @@
         ac(table, body);
         ac(table, foot);
 
+        const buttonRow = E('tr');
+
+        const equalize = TH('');
+        const eButton = E('button');
+        eButton.innerText = 'equalize';
+
+        eButton.addEventListener('click', () => {
+          marketKeys.forEach(key => targetWeights[exchange][key] = 1);
+          recalcTargetDiff();
+          buildExchange(exchange);
+        });
+
+        ac(equalize, eButton);
+
+        ac(buttonRow, TH(''));
+        ac(buttonRow, TH(''));
+        ac(buttonRow, TH(''));
+        ac(buttonRow, TH(''));
+        ac(buttonRow, TH(''));
+        ac(buttonRow, TH(''));
+        ac(buttonRow, TH(''));
+        ac(buttonRow, equalize);
+        ac(buttonRow, TH(''));
+        ac(buttonRow, TH(''));
+
+        ac(head, buttonRow);
+
         const row = E('tr');
 
         ac(row, TH('coin'));
@@ -198,9 +225,9 @@
 
         const targetDiffEls = {};
 
-        console.log(marketKeys, total, dollarValues);
         marketKeys.forEach(key => {
           if (targets[exchange][key] === undefined) targets[exchange][key] = 0;
+          if (dollarValues[key] === undefined) dollarValues[key] = 0;
 
           const tr = E('tr');
 
@@ -301,31 +328,11 @@
 
           targetWeightInput.addEventListener('change', event => {
             const newValue = parseFloat(event.target.value);
-            const diff = targetWeights[exchange][key] - newValue;
-
             const weights = targetWeights[exchange];
-
             weights[key] = newValue;
 
-            const totalWeight = Object.keys(weights).reduce((acc, tKey) => acc + (weights[tKey] || 0), 0);
-
-            console.log(newValue, weights, totalWeight);
-
-            if (totalWeight > 0) {
-              Object.keys(targetEls[exchange]).forEach(tKey => {
-                const newTarget = (weights[tKey] || 0) / totalWeight;
-                targets[exchange][tKey] = targetEls[exchange][tKey].value = newTarget * 100;
-
-                const newTargetDollarValue = newTarget * totalDollarValue;
-                const dollarDiff = dollarValues[tKey] - newTargetDollarValue;
-                targetDiffEls[tKey].innerText = `$${-dollarDiff.toFixed(2)}`;
-
-                tradeButtons[exchange][tKey].disabled = Math.abs(dollarDiff || 0) === 0;
-              });
-            }
-
+            recalcTargetDiff();
           });
-
 
           if (totalDollarValue > 0) {
             const targetDiff = dollarValues[key] - targets[exchange][key] / 100 * totalDollarValue ;
@@ -342,6 +349,28 @@
           tradeButton.disabled = true;
 
           tradeButtons[exchange][key] = tradeButton;
+
+          tradeButton.addEventListener('click', () => {
+            const targetDiff = dollarValues[key] - targets[exchange][key] / 100 * totalDollarValue;
+
+            const t = tickers[exchange];
+            let ticker = t.tickers[`${key}/USD`];
+            let base = 'USD';
+
+            if (ticker === undefined) {
+             ticker = t.tickers[`${key}/USDT`];
+             base = 'USDT';
+            }
+
+
+            const side = targetDiff > 0 ? 'sell' : 'buy';
+            const price = side === 'buy' ? ticker.bid : ticker.ask;
+            const amount =  targetDiff / price;
+
+            const message = [side, amount.toFixed(4), `${key}${base}`, price, exchange];
+
+            ws.send(JSON.stringify(message));
+          });
 
           const tradeTD = TD('');
           ac(tradeTD, tradeButton);
@@ -369,7 +398,27 @@
         ac(frow, TH((portfolioTotal * 100).toFixed(2) + '%'));
         ac(frow, targetTotalEl);
 
+        recalcTargetDiff();
+
         return table;
+
+        function recalcTargetDiff() {
+          const weights = targetWeights[exchange];
+          const totalWeight = Object.keys(weights).reduce((acc, tKey) => acc + (weights[tKey] || 0), 0);
+
+          if (totalWeight > 0) {
+            Object.keys(targetEls[exchange]).forEach(tKey => {
+              const newTarget = (weights[tKey] || 0) / totalWeight;
+              targets[exchange][tKey] = targetEls[exchange][tKey].value = newTarget * 100;
+
+              const newTargetDollarValue = newTarget * totalDollarValue;
+              const dollarDiff = dollarValues[tKey] - newTargetDollarValue;
+              targetDiffEls[tKey].innerText = `$${-dollarDiff.toFixed(2)}`;
+
+              tradeButtons[exchange][tKey].disabled = Math.abs(dollarDiff || 0) === 0;
+            });
+          }
+        }
       }
     </script>
 

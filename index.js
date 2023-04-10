@@ -16,7 +16,7 @@ const exchangesArray =
     });
 
 const exchanges = exchangesArray.reduce((acc, ex) => {
-  acc[ex.nickname] = ex;
+  acc[ex.nickname || ex.id] = ex;
   return acc;
 }, {});
 
@@ -45,6 +45,25 @@ wss.on('connection', function connection(ws) {
 
   ws.on('message', function message(data) {
     console.log('received: %s', data);
+
+    const [side, amount, market, price, exchange] = JSON.parse(data);
+
+    console.log(JSON.parse(data));
+    console.log(side, amount, market, price, exchange);
+
+    switch (side) {
+    case 'buy':
+      exchanges[exchange].api.createOrder(market, 'limit', 'buy', amount, price)
+        .then(ret => console.log('buy ret', ret))
+        .catch(err => console.log('buy err', err));
+      break;
+    case 'sell':
+      const ret = exchanges[exchange].api.createOrder(market, 'limit', 'sell', amount, price)
+        // .then(ret => console.log('sell ret', ret))
+        // .catch(err => console.log('sell err', err));
+      console.log('sell ret', ret);
+      break;
+    }
   });
 
   ws.send(JSON.stringify(['exchanges', exchangesArray.map(({nickname, id}) => ({nickname: nickname || id}))]));
