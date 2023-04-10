@@ -23,7 +23,7 @@
 
       const exchangeEls = {};
 
-      let balances = {}, markets = {}, tickers = {}, targets = {}, targetEls = {};
+      let balances = {}, markets = {}, tickers = {}, targets = {}, targetEls = {}, targetWeights = {}, targetWeightEls = {}, tradeButtons = {};
       ws.addEventListener('message', event => {
         const message = JSON.parse(event.data);
         console.log(message);
@@ -43,6 +43,9 @@
 
               targets[nickname] = {};
               targetEls[nickname] = {};
+              targetWeights[nickname] = {};
+              targetWeightEls[nickname] = {};
+              tradeButtons[nickname] = {};
             });
 
             ac(document.body, eEl);
@@ -53,8 +56,9 @@
             buildExchange(data.exchange);
             break;
           case 'markets':
-            markets[data.exchange] = data;
+            markets[data.exchange] = data.markets;
 
+            buildExchange(data.exchange);
             break;
           case 'tickers':
             tickers[data.exchange] = data;
@@ -112,7 +116,29 @@
         ac(row, TH('target %'));
         ac(row, TH('target weight'));
         ac(row, TH('$ diff'));
+        ac(row, TH('trade'));
         ac(head, row);
+
+        const marketsFull = {};
+        if (markets[exchange]) {
+          markets[exchange].forEach(market => {
+            const {base, quote} = market;
+
+            if (marketsFull[base]) {
+              marketsFull[base].push(market);
+            }
+            else {
+              marketsFull[base] = [market];
+            }
+
+            if (marketsFull[quote]) {
+              marketsFull[quote].push(market);
+            }
+            else {
+              marketsFull[quote] = [market];
+            }
+          });
+        }
 
 
         let keys = Object.keys(total);
@@ -146,35 +172,50 @@
           });
         }
 
+        let marketKeys = Object.keys(marketsFull);
+        if (sortBy) marketKeys = marketKeys.sort((a, b) => {
 
-        if (sortBy) keys = keys.sort((a, b) => {
           switch (sortBy) {
             case 'key': return a < b ? -1 : 1;
             case 'total': 
-              return total[a] > total[b] ? -1 : (total[a] < total[b] ? 1 : (a < b ? -1 : 1));
+              const totalA = total[a] || 0,
+                    totalB = total[b] || 0;
+              return totalA > totalB ? -1 : (totalA < totalB ? 1 : (a < b ? -1 : 1));
             case 'free': 
-              return free[a] > free[b] ? -1 : (free[a] < free[b] ? 1 : (a < b ? -1 : 1));
+              const freeA = free[a] || 0,
+                    freeB = free[b] || 0;
+              return freeA > freeB ? -1 : (freeA < freeB ? 1 : (a < b ? -1 : 1));
             case 'used': 
-              return used[a] > used[b] ? -1 : (used[a] < used[b] ? 1 : (a < b ? -1 : 1));
+              const usedA = used[a] || 0,
+                    usedB = used[b] || 0;
+              return usedA > usedB ? -1 : (usedA < usedB ? 1 : (a < b ? -1 : 1));
             case '$': 
-              return dollarValues[a] > dollarValues[b] ? -1 : (dollarValues[a] < dollarValues[b] ? 1 : (a < b ? -1 : 1));
+              const dollarValuesA = dollarValues[a] || 0,
+                    dollarValuesB = dollarValues[b] || 0;
+              return dollarValuesA > dollarValuesB ? -1 : (dollarValuesA < dollarValuesB ? 1 : (a < b ? -1 : 1));
           }
         });
 
         const targetDiffEls = {};
 
-        keys.forEach(key => {
+        console.log(marketKeys, total, dollarValues);
+        marketKeys.forEach(key => {
+          if (targets[exchange][key] === undefined) targets[exchange][key] = 0;
+
           const tr = E('tr');
+
+          const dollarValueTD = TD('$' + (dollarValues[key] || 0).toFixed(2));
+          dollarValueTD.className = 'dollar-value';
 
           ac(tr, TD(key));
           ac(tr, TD(total[key] || 0));
-          ac(tr, TD(free[key] || (free[key] === undefined ? total[key] : 0)));
+          ac(tr, TD(free[key] || (free[key] === undefined ? total[key] || 0 : 0)));
           ac(tr, TD(used[key] || 0));
-          ac(tr, TD('$' + (dollarValues[key] || 0).toFixed(2)));
+          ac(tr, dollarValueTD);
           
 
           if (totalDollarValue > 0) {
-            const weight = parseFloat(portfolioWeight[key] * 100).toFixed(2);
+            const weight = parseFloat((portfolioWeight[key] || 0) * 100).toFixed(2);
             const weightEl = TD('');
 
             const weightDisplayEl = E('weight');
@@ -195,6 +236,7 @@
           target.min = 0;
           target.max = 100;
           target.step = 0.01;
+          target.disabled = true;
 
           targetEls[exchange][key] = target;
 
@@ -248,12 +290,41 @@
           targetWeightInput.max = 99999999;
           targetWeightInput.step = 1;
 
-          targetWeightInput.value = 0;
+          targetWeightInput.value = targetWeights[exchange][key] || 0;
+
+          targetWeightEls[exchange][key] = targetWeightInput;
 
           const targetWeightEl = TD('');
           ac(targetWeightEl, targetWeightInput);
 
           ac(tr, targetWeightEl);
+
+          targetWeightInput.addEventListener('change', event => {
+            const newValue = parseFloat(event.target.value);
+            const diff = targetWeights[exchange][key] - newValue;
+
+            const weights = targetWeights[exchange];
+
+            weights[key] = newValue;
+
+            const totalWeight = Object.keys(weights).reduce((acc, tKey) => acc + (weights[tKey] || 0), 0);
+
+            console.log(newValue, weights, totalWeight);
+
+            if (totalWeight > 0) {
+              Object.keys(targetEls[exchange]).forEach(tKey => {
+                const newTarget = (weights[tKey] || 0) / totalWeight;
+                targets[exchange][tKey] = targetEls[exchange][tKey].value = newTarget * 100;
+
+                const newTargetDollarValue = newTarget * totalDollarValue;
+                const dollarDiff = dollarValues[tKey] - newTargetDollarValue;
+                targetDiffEls[tKey].innerText = `$${-dollarDiff.toFixed(2)}`;
+
+                tradeButtons[exchange][tKey].disabled = Math.abs(dollarDiff || 0) === 0;
+              });
+            }
+
+          });
 
 
           if (totalDollarValue > 0) {
@@ -265,6 +336,17 @@
           else {
             ac(tr, TD(''));
           }
+
+          const tradeButton = E('button');
+          tradeButton.innerText = 'Trade';
+          tradeButton.disabled = true;
+
+          tradeButtons[exchange][key] = tradeButton;
+
+          const tradeTD = TD('');
+          ac(tradeTD, tradeButton);
+
+          ac(tr, tradeTD);
 
 
           ac(body, tr);
@@ -331,6 +413,15 @@
         padding: 0.25em;
 
         border-left: solid 1px #999;
+      }
+
+      @keyframes fade-text {
+        from {color: rgba(0, 0, 0, 1);}
+        to {color: rgba(200, 200, 200, 1);}
+      }
+
+      td.dollar-value {
+        animation: fade-text 45s ease-out forwards;
       }
 
       weight {
