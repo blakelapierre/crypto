@@ -51,6 +51,14 @@ wss.on('connection', function connection(ws) {
     console.log(JSON.parse(data));
     console.log(side, amount, market, price, exchange);
 
+    if (side === 'refreshInterval') {
+      clearInterval(loadDataInterval);
+
+      loadDataInterval = setInterval(loadExchangeData, amount * 1000);
+
+      return;
+    }
+
     switch (side) {
     case 'buy':
       exchanges[exchange].api.createOrder(market, 'limit', 'buy', amount, price)
@@ -103,7 +111,7 @@ console.log('wss listening on', wss.port);
 
 loadExchangeData();
 
-setInterval(loadExchangeData, 60 * 1000);
+let loadDataInterval = setInterval(loadExchangeData, 60 * 1000);
 
 function loadExchangeData() {
   exchangesArray.forEach(ex => {

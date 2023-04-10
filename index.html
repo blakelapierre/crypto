@@ -6,6 +6,11 @@
     <script>
       const E = (...args) => document.createElement(...args);
       const ac = (e1, e2) => e1.appendChild(e2);
+      const ET = (element, text) => {
+        const el = E(element);
+        el.innerText = text;
+        return el;
+      };
 
       const TH = header => {
         const th = E('th');
@@ -19,11 +24,42 @@
         return td;
       };
 
+      const OPTION = (text, value) => {
+        const el = ET('option', text);
+        el.value = value;
+        return el;
+      };
+
+      const refreshSelect = E('select');
+
+      ac(refreshSelect, OPTION('refresh every 10s', 10));
+      ac(refreshSelect, OPTION('refresh every 15s', 15));
+      ac(refreshSelect, OPTION('refresh every 20s', 20));
+      ac(refreshSelect, OPTION('refresh every 30s', 30));
+      ac(refreshSelect, OPTION('refresh every 45s', 45));
+      ac(refreshSelect, OPTION('refresh every 60s', 60));
+
+      refreshSelect.addEventListener('change', event => {
+        ws.send(JSON.stringify(['refreshInterval', refreshSelect.value]));
+      });
+
+      document.addEventListener('DOMContentLoaded', () => {
+        ac(document.body, refreshSelect);
+      });
+
       const ws = new WebSocket(`ws://${window.location.hostname}:8081`);
 
       const exchangeEls = {};
 
-      let balances = {}, markets = {}, tickers = {}, targets = {}, targetEls = {}, targetWeights = {}, targetWeightEls = {}, tradeButtons = {};
+      let balances = {}, 
+          markets = {}, 
+          tickers = {}, 
+          targets = {}, 
+          targetEls = {}, 
+          targetWeights = {}, 
+          targetWeightEls = {}, 
+          tradeButtons = {};
+
       ws.addEventListener('message', event => {
         const message = JSON.parse(event.data);
         console.log(message);
@@ -129,6 +165,7 @@
         ac(buttonRow, equalize);
         ac(buttonRow, TH(''));
         ac(buttonRow, TH(''));
+        ac(buttonRow, TH(''));
 
         ac(head, buttonRow);
 
@@ -143,6 +180,7 @@
         ac(row, TH('target %'));
         ac(row, TH('target weight'));
         ac(row, TH('$ diff'));
+        ac(row, TH('min ord'));
         ac(row, TH('trade'));
         ac(head, row);
 
@@ -344,6 +382,46 @@
             ac(tr, TD(''));
           }
 
+          const m = marketsFull[key][0];
+
+          if (m.base === key) {
+            const min = parseFloat(m.limits.amount.min || m.limits.cost.min);
+            const t = tickers[exchange];
+            let ticker = t.tickers[`${key}/USD`];
+            let base = 'USD';
+
+            if (ticker === undefined) {
+             ticker = t.tickers[`${key}/USDT`];
+             base = 'USDT';
+            }
+            if (ticker) {
+              const ask = parseFloat(ticker.ask || m.limits.cost.min);
+              ac(tr, TD(`$${(min * ask).toFixed(2)}`));
+            }
+            else ac(tr, TD(''));
+          }
+          else if (m.quote === key) {
+            // check this...probably wrong...
+            const min = parseFloat(m.limits.amount.min);
+            const t = tickers[exchange];
+            let ticker = t.tickers[`${key}/USD`];
+            let base = 'USD';
+
+            if (ticker === undefined) {
+             ticker = t.tickers[`${key}/USDT`];
+             base = 'USDT';
+            }
+            if (ticker) {
+              const bid = parseFloat(ticker.bid);
+              ac(tr, TD(`$${(min * bid).toFixed(2)}`));
+            }
+            else ac(tr, TD(''));
+          }
+          else {
+            ac(tr, TD(''));
+          }
+
+
           const tradeButton = E('button');
           tradeButton.innerText = 'Trade';
           tradeButton.disabled = true;
@@ -365,9 +443,9 @@
 
             const side = targetDiff > 0 ? 'sell' : 'buy';
             const price = side === 'buy' ? ticker.bid : ticker.ask;
-            const amount =  targetDiff / price;
+            const amount = Math.abs(targetDiff) / price;
 
-            const message = [side, amount.toFixed(4), `${key}${base}`, price, exchange];
+            const message = [side, amount.toFixed(4), `${key}/${base}`, price, exchange];
 
             ws.send(JSON.stringify(message));
           });
