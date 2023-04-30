@@ -8,6 +8,8 @@ const auth = JSON.parse(fs.readFileSync('auth.json').toString());
 
 console.log(auth);
 
+const banned = {};
+
 const exchangesArray = 
   auth.exchanges
     .filter(({enabled}) => enabled)
@@ -20,11 +22,14 @@ const exchanges = exchangesArray.reduce((acc, ex) => {
   return acc;
 }, {});
 
+Object.keys(exchanges).forEach(a => banned[a] = {});
+
 const accounts = auth.exchanges
 
 const balances = {};
 const markets = {};
 const tickers = {};
+const orders = {};
 
 const wss = new ws.WebSocketServer({ port: 8081 });
 
@@ -63,12 +68,12 @@ wss.on('connection', function connection(ws) {
     case 'buy':
       exchanges[exchange].api.createOrder(market, 'limit', 'buy', amount, price)
         .then(ret => console.log('buy ret', ret))
-        .catch(err => console.log('buy err', err));
+        .catch(e => handleOrderError(e, 'buy', exchange, market, 'limit', amount, price));
       break;
     case 'sell':
       exchanges[exchange].api.createOrder(market, 'limit', 'sell', amount, price)
         .then(ret => console.log('sell ret', ret))
-        .catch(err => console.log('sell err', err));
+        .catch(e => handleOrderError(e, 'sell', exchange, market, 'limit', amount, price));
       break;
     }
   });
@@ -95,6 +100,14 @@ wss.on('connection', function connection(ws) {
 
       if (t) ws.send(JSON.stringify(createTickersMessage(name, t)));
     });
+
+
+  Object.keys(orders)
+    .forEach(name => {
+      const t = orders[name];
+
+      if (t) ws.send(JSON.stringify(createOrdersMessage(name, t)));
+    });
 });
 
 const index = fs.readFileSync('index.html');
@@ -110,6 +123,7 @@ console.log('httpServer listening on', httpServer.port);
 console.log('wss listening on', wss.port);
 
 loadExchangeData();
+loadExchangeOrders();
 
 let loadDataInterval = setInterval(loadExchangeData, 60 * 1000);
 
@@ -144,6 +158,22 @@ function loadExchangeData() {
   });
 }
 
+function loadExchangeOrders() {
+  exchangesArray.forEach(ex => {
+    const {id, nickname, api} = ex;
+    const name = nickname || id;
+
+    console.log('fetching', name, 'orders');
+    api.fetchClosedOrders()
+      .then(data => {
+        orders[name] = data;
+        broadcast(createOrdersMessage(name, data));
+      })
+      .catch(err => console.log('error fetching orders', name, err));
+
+  });
+}
+
 function broadcast(data) {
   wss.clients.forEach(function each(client) {
     if (client.readyState === ws.WebSocket.OPEN) {
@@ -175,4 +205,25 @@ function createTickersMessage(exchange, tickers) {
     exchange,
     tickers
   }];
+}
+
+function createOrdersMessage(exchange, data) {
+  return ['orders', {exchange, data}];
+}
+
+function handleOrderError(e, direction, exchange, market, type, amount, price) {
+  console.log('order error', direction, e);
+  console.log(typeof(e));
+  try {
+    console.log(JSON.stringify(e));
+    if (e.kraken.match(/EAccount:Invalid permissions:\w+ trading restricted/)) {
+      banned[exchange][market] = true;
+      console.log(banned);
+
+      broadcast(['banned', banned]);
+    }
+  }
+  catch (e) {
+    console.log('error', e);0
+  }
 }

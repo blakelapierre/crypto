@@ -58,7 +58,9 @@
           targetEls = {}, 
           targetWeights = {}, 
           targetWeightEls = {}, 
-          tradeButtons = {};
+          tradeButtons = {},
+          banned = {},
+          orders = {};
 
       ws.addEventListener('message', event => {
         const message = JSON.parse(event.data);
@@ -100,6 +102,26 @@
 
             buildExchange(data.exchange);
             break;
+          case 'orders':
+            const os = {};
+
+            data.data.forEach(o => {
+              if (o.status === 'canceled') return;
+
+              const [symbol] = o.symbol.split('/');
+              os[symbol] = os[symbol] || [];
+
+              os[symbol].push(o);
+            });
+
+            orders[data.exchange] = os;
+
+            buildExchange(data.exchange);
+            break;
+
+          case 'banned':
+            banned = data;
+            break;
         }
       });
 
@@ -129,6 +151,8 @@
         ac(el, table);
 
         ac(el, bEl);
+
+        banned[id] = banned[id] || {};
       }
 
       function createBalanceTable(exchange, {total, free, used}, sortBy) {
@@ -165,6 +189,7 @@
         ac(buttonRow, TH(''));
         ac(buttonRow, TH(''));
         ac(buttonRow, TH(''));
+        ac(buttonRow, TH(''));
 
         ac(head, buttonRow);
 
@@ -181,6 +206,7 @@
         ac(row, TH('$ diff'));
         ac(row, TH('min ord'));
         ac(row, TH('trade'));
+        ac(row, TH('recent trades'));
         ac(head, row);
 
         const marketsFull = {};
@@ -421,38 +447,63 @@
           }
 
 
-          const tradeButton = E('button');
-          tradeButton.innerText = 'Trade';
-          tradeButton.disabled = true;
+          if (!banned[exchange][`${key}/USD`] && !banned[exchange][`${key}/USDT`]) {
+            const tradeButton = E('button');
+            tradeButton.innerText = 'Trade';
+            tradeButton.disabled = true;
 
-          tradeButtons[exchange][key] = tradeButton;
+            tradeButtons[exchange][key] = tradeButton;
 
-          tradeButton.addEventListener('click', () => {
-            const targetDiff = dollarValues[key] - targets[exchange][key] / 100 * totalDollarValue;
+            tradeButton.addEventListener('click', () => {
+              const targetDiff = dollarValues[key] - targets[exchange][key] / 100 * totalDollarValue;
 
-            const t = tickers[exchange];
-            let ticker = t.tickers[`${key}/USD`];
-            let base = 'USD';
+              const t = tickers[exchange];
+              let ticker = t.tickers[`${key}/USD`];
+              let base = 'USD';
 
-            if (ticker === undefined) {
-             ticker = t.tickers[`${key}/USDT`];
-             base = 'USDT';
+              if (ticker === undefined) {
+               ticker = t.tickers[`${key}/USDT`];
+               base = 'USDT';
+              }
+
+
+              const side = targetDiff > 0 ? 'sell' : 'buy';
+              const price = side === 'buy' ? ticker.ask : ticker.bid;
+              const amount = Math.abs(targetDiff) / price;
+
+              const message = [side, amount.toFixed(4), `${key}/${base}`, price, exchange];
+
+              ws.send(JSON.stringify(message));
+            });
+
+            const tradeTD = TD('');
+            ac(tradeTD, tradeButton);
+
+            ac(tr, tradeTD);
+          }
+
+          if (orders[exchange]) {
+            const os = orders[exchange][key];
+            if (os) {
+              const oEl = TD('');
+
+              oEl.className = 'orders'
+
+              const sorted = os.sort((a, b) => a.datetime > b.datetime ? -1 : 1);
+
+              for (let i = 0; i < 3 && i < sorted.length; i++) {
+                const info = E('div');
+                const {side, amount, cost, fee, status, datetime} = os[i];
+                info.className = side;
+                info.innerText = `${side} ${amount.toFixed(4)} $${cost.toFixed(4)} (-${fee.cost.toFixed(4)} ${fee.currency}) ${status} ${datetime}`;
+                ac(oEl, info);
+              }
+              ac(tr, oEl);
             }
-
-
-            const side = targetDiff > 0 ? 'sell' : 'buy';
-            const price = side === 'buy' ? ticker.ask : ticker.bid;
-            const amount = Math.abs(targetDiff) / price;
-
-            const message = [side, amount.toFixed(4), `${key}/${base}`, price, exchange];
-
-            ws.send(JSON.stringify(message));
-          });
-
-          const tradeTD = TD('');
-          ac(tradeTD, tradeButton);
-
-          ac(tr, tradeTD);
+          }
+          else {
+            ac(tr, TD(''));
+          }
 
 
           ac(body, tr);
@@ -558,6 +609,20 @@
         height: 100%;
         width: 0%;
         background-color: rgba(0.8, 0.8, 0.8, 0.2);
+      }
+
+      td.orders {
+        font-size: 0.85em;
+        background-color: #000;
+        font-weight: bold;
+      }
+
+      td.orders .buy {
+        color: #22ff22;
+      }
+
+      td.orders sell {
+        color: #ff0000;
       }
     </style>
   </head>
