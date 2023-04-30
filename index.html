@@ -199,6 +199,7 @@
         ac(row, TH('total'));
         ac(row, TH('free'));
         ac(row, TH('used'));
+        ac(row, TH('price'));
         ac(row, TH('$ value'));
         ac(row, TH('portfolio %'));
         ac(row, TH('target %'));
@@ -297,10 +298,27 @@
           const dollarValueTD = TD('$' + (dollarValues[key] || 0).toFixed(2));
           dollarValueTD.className = 'dollar-value';
 
+          const t = tickers[exchange];
+          let ticker = t.tickers[`${key}/USD`];
+          let base = 'USD';
+
+          if (ticker === undefined) {
+           ticker = t.tickers[`${key}/USDT`];
+           base = 'USDT';
+          }
+
           ac(tr, TD(key));
           ac(tr, TD(total[key] || 0));
           ac(tr, TD(free[key] || (free[key] === undefined ? total[key] || 0 : 0)));
           ac(tr, TD(used[key] || 0));
+
+          if (ticker) {
+            ac(tr, TD(`$${ticker.last.toFixed(3)}`));
+          }
+          else {
+            ac(tr, TD(''));
+          }
+
           ac(tr, dollarValueTD);
           
 
@@ -411,14 +429,7 @@
 
           if (m.base === key) {
             const min = parseFloat(m.limits.amount.min || m.limits.cost.min);
-            const t = tickers[exchange];
-            let ticker = t.tickers[`${key}/USD`];
-            let base = 'USD';
-
-            if (ticker === undefined) {
-             ticker = t.tickers[`${key}/USDT`];
-             base = 'USDT';
-            }
+  
             if (ticker) {
               const ask = parseFloat(ticker.ask || m.limits.cost.min);
               ac(tr, TD(`$${(min * ask).toFixed(2)}`));
@@ -428,14 +439,7 @@
           else if (m.quote === key) {
             // check this...probably wrong...
             const min = parseFloat(m.limits.amount.min);
-            const t = tickers[exchange];
-            let ticker = t.tickers[`${key}/USD`];
-            let base = 'USD';
 
-            if (ticker === undefined) {
-             ticker = t.tickers[`${key}/USDT`];
-             base = 'USDT';
-            }
             if (ticker) {
               const bid = parseFloat(ticker.bid);
               ac(tr, TD(`$${(min * bid).toFixed(2)}`));
@@ -456,15 +460,6 @@
 
             tradeButton.addEventListener('click', () => {
               const targetDiff = dollarValues[key] - targets[exchange][key] / 100 * totalDollarValue;
-
-              const t = tickers[exchange];
-              let ticker = t.tickers[`${key}/USD`];
-              let base = 'USD';
-
-              if (ticker === undefined) {
-               ticker = t.tickers[`${key}/USDT`];
-               base = 'USDT';
-              }
 
 
               const side = targetDiff > 0 ? 'sell' : 'buy';
@@ -493,9 +488,18 @@
 
               for (let i = 0; i < 3 && i < sorted.length; i++) {
                 const info = E('div');
-                const {side, amount, cost, fee, status, datetime} = os[i];
+                const {side, amount, average, cost, fee, status, datetime} = os[i];
                 info.className = side;
-                info.innerText = `${side} ${amount.toFixed(4)} $${cost.toFixed(4)} (-${fee.cost.toFixed(4)} ${fee.currency}) ${status} ${datetime}`;
+
+                let price = '';
+                let change = '';
+                if (ticker) {
+                  const dir = average < ticker.last ? 'up' : 'down';
+                  price = dir === 'up' ? `<up>${average.toFixed(3)}</up>` : `<down>${average.toFixed(3)}</down>`;
+                  change = ticker.last - average;
+                  change = dir === 'up' ? `<up>(${change.toFixed(3)} ${(change / average* 100).toFixed(2)}%)</up>` : `<down>(${change.toFixed(3)} ${(change / average * 100).toFixed(2)}%)</down>`;
+                }
+                info.innerHTML = `${side} ${amount.toFixed(4)} @${price} ^${change} [$${cost.toFixed(4)}] (fee -${fee.cost.toFixed(4)} ${fee.currency}) ${status} ${datetime}`;
                 ac(oEl, info);
               }
               ac(tr, oEl);
@@ -594,7 +598,7 @@
 
       @keyframes fade-text {
         from {color: rgba(0, 0, 0, 1);}
-        to {color: rgba(200, 200, 200, 1);}
+        to {color: rgba(128, 128, 128, 1);}
       }
 
       td.dollar-value {
@@ -622,6 +626,14 @@
       }
 
       td.orders sell {
+        color: #ff0000;
+      }
+
+      td.orders up {
+        color: #00ff00;
+      }
+
+      td.orders down {
         color: #ff0000;
       }
     </style>
