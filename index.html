@@ -494,12 +494,13 @@
                 let price = '';
                 let change = '';
                 if (ticker) {
-                  const dir = average < ticker.last ? 'up' : 'down';
-                  price = dir === 'up' ? `<up>${average.toFixed(3)}</up>` : `<down>${average.toFixed(3)}</down>`;
+                  let dir = average < ticker.last ? 'up' : 'down';
+                  if (side === 'sell') dir = dir === 'up' ? 'down' : 'up';
+                  price = `<${dir}>${average.toFixed(3)}</${dir}>`;
                   change = ticker.last - average;
-                  change = dir === 'up' ? `<up>(${change.toFixed(3)} ${(change / average* 100).toFixed(2)}%)</up>` : `<down>(${change.toFixed(3)} ${(change / average * 100).toFixed(2)}%)</down>`;
+                  change = `<${dir}>(${change.toFixed(3)} ${(change / average* 100).toFixed(2)}%)</${dir}>`;
                 }
-                info.innerHTML = `${side} ${amount.toFixed(4)} @${price} ^${change} [$${cost.toFixed(4)}] (fee -${fee.cost.toFixed(4)} ${fee.currency}) ${status} ${datetime}`;
+                info.innerHTML = `${side} ${amount.toFixed(4)} @${price} *${change} [$${cost.toFixed(4)}] (fee -${fee.cost.toFixed(4)} ${fee.currency}) ${status} ${datetime}`;
                 ac(oEl, info);
               }
               ac(tr, oEl);
@@ -625,7 +626,7 @@
         color: #22ff22;
       }
 
-      td.orders sell {
+      td.orders .sell {
         color: #ff0000;
       }
 
