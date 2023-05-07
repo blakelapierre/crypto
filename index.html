@@ -51,7 +51,8 @@
 
       const exchangeEls = {};
 
-      let balances = {}, 
+      let balances = {},
+          accounts = {}, 
           markets = {}, 
           tickers = {}, 
           targets = {}, 
@@ -89,6 +90,17 @@
             break;
           case 'balances':
             balances[data.exchange] = data;
+
+            buildExchange(data.exchange);
+            break;
+
+          case 'accounts':
+            accounts[data.exchange] = {};
+
+            data.accounts.forEach(({currency, type, info: {available, balance}}) => {
+              if (type !== 'trade') return;
+              accounts[data.exchange][currency] = {available, balance};
+            });
 
             buildExchange(data.exchange);
             break;
@@ -147,7 +159,7 @@
         ac(header, targetPortfolio);
         ac(el, header);
 
-        const table = createBalanceTable(id, balances[id].balances, '$');
+        const table = createBalanceTable(id, balances[id].balances, accounts[id] || [], '$');
         ac(el, table);
 
         ac(el, bEl);
@@ -155,7 +167,37 @@
         banned[id] = banned[id] || {};
       }
 
-      function createBalanceTable(exchange, {total, free, used}, sortBy) {
+      function createBalanceTable(exchange, {total, free, used}, accounts, sortBy) {
+        const marketsFull = {};
+        if (markets[exchange]) {
+          markets[exchange].forEach(market => {
+            const {base, quote} = market;
+
+            if (marketsFull[base]) {
+              marketsFull[base].push(market);
+            }
+            else {
+              marketsFull[base] = [market];
+            }
+
+            if (marketsFull[quote]) {
+              marketsFull[quote].push(market);
+            }
+            else {
+              marketsFull[quote] = [market];
+            }
+          });
+        }
+
+        Object.keys(accounts).forEach(key => {
+          const a = accounts[key];
+
+          total[key] = parseFloat(a.balance) || 0;
+          free[key] = parseFloat(a.available) || 0;
+          used[key] = total[key] - free[key];
+        });
+
+
         const table = E('table');
         const head = E('thead');
         const body = E('tbody');
@@ -167,8 +209,17 @@
         const buttonRow = E('tr');
 
         const equalize = TH('');
+        const equalizeOwned = TH('');
+        const goCash = TH('');
+
         const eButton = E('button');
         eButton.innerText = 'equalize';
+
+        const eoButton = E('button');
+        eoButton.innerText = 'equalize owned';
+
+        const gcButton = E('button');
+        gcButton.innerText = 'go cash';
 
         eButton.addEventListener('click', () => {
           marketKeys.forEach(key => targetWeights[exchange][key] = 1);
@@ -176,7 +227,32 @@
           buildExchange(exchange);
         });
 
+        eoButton.addEventListener('click', () => {
+          marketKeys.forEach(key => {
+            if (total[key] > 0) {
+              targetWeights[exchange][key] = 1;
+            }
+            else {
+              targetWeights[exchange][key] = 0;
+            }
+          });
+
+          recalcTargetDiff();
+          buildExchange(exchange);
+        });
+
+        gcButton.addEventListener('click', () => {
+          marketKeys.forEach(key => {
+            if (key === 'USDT') targetWeights[exchange][key] = 1;
+            else targetWeights[exchange][key] = 0;
+          });
+          recalcTargetDiff();
+          buildExchange(exchange);
+        });
+
         ac(equalize, eButton);
+        ac(equalizeOwned, eoButton);
+        ac(goCash, gcButton);
 
         ac(buttonRow, TH(''));
         ac(buttonRow, TH(''));
@@ -186,8 +262,8 @@
         ac(buttonRow, TH(''));
         ac(buttonRow, TH(''));
         ac(buttonRow, equalize);
-        ac(buttonRow, TH(''));
-        ac(buttonRow, TH(''));
+        ac(buttonRow, equalizeOwned);
+        ac(buttonRow, goCash);
         ac(buttonRow, TH(''));
         ac(buttonRow, TH(''));
 
@@ -209,27 +285,6 @@
         ac(row, TH('trade'));
         ac(row, TH('recent trades'));
         ac(head, row);
-
-        const marketsFull = {};
-        if (markets[exchange]) {
-          markets[exchange].forEach(market => {
-            const {base, quote} = market;
-
-            if (marketsFull[base]) {
-              marketsFull[base].push(market);
-            }
-            else {
-              marketsFull[base] = [market];
-            }
-
-            if (marketsFull[quote]) {
-              marketsFull[quote].push(market);
-            }
-            else {
-              marketsFull[quote] = [market];
-            }
-          });
-        }
 
 
         let keys = Object.keys(total);
@@ -398,7 +453,10 @@
           targetWeightInput.max = 99999999;
           targetWeightInput.step = 1;
 
-          targetWeightInput.value = targetWeights[exchange][key] || 0;
+          targetWeights[exchange][key] = targetWeights[exchange][key];
+          if (targetWeights[exchange][key] === undefined || targetWeights[exchange][key] === null) targetWeights[exchange][key] = targets[exchange][key] || 0;
+
+          targetWeightInput.value = targetWeights[exchange][key];
 
           targetWeightEls[exchange][key] = targetWeightInput;
 
@@ -521,9 +579,10 @@
 
         const frow = E('tr');
 
-        ac(foot, frow);
+        ac(head, frow);
 
         ac(frow, TH('TOTAL:'));
+        ac(frow, TH(''));
         ac(frow, TH(''));
         ac(frow, TH(''));
         ac(frow, TH(''));
@@ -537,7 +596,7 @@
 
         function recalcTargetDiff() {
           const weights = targetWeights[exchange];
-          const totalWeight = Object.keys(weights).reduce((acc, tKey) => acc + (weights[tKey] || 0), 0);
+          const totalWeight = Object.keys(weights).reduce((acc, tKey) => acc + parseFloat(weights[tKey] || 0), 0);
 
           if (totalWeight > 0) {
             Object.keys(targetEls[exchange]).forEach(tKey => {
@@ -549,6 +608,7 @@
               targetDiffEls[tKey].innerText = `$${-dollarDiff.toFixed(2)}`;
 
               tradeButtons[exchange][tKey].disabled = Math.abs(dollarDiff || 0) === 0;
+              tradeButtons[exchange][tKey].disabled = false;//Math.abs(dollarDiff || 0) === 0;
             });
           }
         }
@@ -558,6 +618,8 @@
     <style>
       exchanges {
         display: flex;
+
+        overflow: auto;
       }
 
       exchange {

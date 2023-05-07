@@ -24,9 +24,8 @@ const exchanges = exchangesArray.reduce((acc, ex) => {
 
 Object.keys(exchanges).forEach(a => banned[a] = {});
 
-const accounts = auth.exchanges
-
 const balances = {};
+const accounts = {};
 const markets = {};
 const tickers = {};
 const orders = {};
@@ -87,6 +86,13 @@ wss.on('connection', function connection(ws) {
       if (b) ws.send(JSON.stringify(createBalancesMessage(nickname, b)));
     });
 
+  Object.keys(accounts)
+    .forEach(nickname => {
+      const b = accounts[nickname];
+
+      if (b) ws.send(JSON.stringify(createAccountsMessage(nickname, b)));
+    });
+
   Object.keys(markets)
     .forEach(name => {
       const m = markets[name];
@@ -140,6 +146,14 @@ function loadExchangeData() {
       })
       .catch(err => console.log('error fetching balances', name, err));
 
+    console.log('fetching', nickname || id, 'accounts');
+    api.fetchAccounts()
+      .then(data => {
+        accounts[name] = data;
+        broadcast(createAccountsMessage(name, data));
+      })
+      .catch(err => console.log('error fetching accounts', name, err));
+
     console.log('fetching', name, 'markets');
     api.fetchMarkets()
       .then(data => {
@@ -190,6 +204,13 @@ function createBalancesMessage(exchange, {total, free, used}) {
       free,
       used
     }
+  }];
+}
+
+function createAccountsMessage(exchange, data) {
+  return ['accounts', {
+    exchange,
+    accounts: data
   }];
 }
 
