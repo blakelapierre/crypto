@@ -178,7 +178,7 @@ function loadExchangeOrders() {
     const name = nickname || id;
 
     console.log('fetching', name, 'orders');
-    api.fetchClosedOrders()
+    api.fetchClosedOrders(undefined, undefined, 500)
       .then(data => {
         orders[name] = data;
         broadcast(createOrdersMessage(name, data));

@@ -197,6 +197,30 @@
           used[key] = total[key] - free[key];
         });
 
+        let keys = Object.keys(total);
+
+        let dollarValues = {};
+        const portfolioWeight = {};
+        let totalDollarValue = 0;
+        keys.forEach(key => {
+          const t = tickers[exchange];
+          if (!t) return;
+          const ticker = t.tickers[`${key}/USD`] || t.tickers[`${key}/USDT`];
+
+          if (ticker) {
+            const value = (total[key] || 0) * ticker.bid;
+            dollarValues[key] = value;
+            totalDollarValue += value;
+          }
+          else if (key === 'USDT' || key === 'USD') {
+            const value = total[key] || 0;
+            dollarValues[key] = value;
+            totalDollarValue += value;
+          }
+          else {
+            dollarValues[key] = '';
+          }
+        });
 
         const table = E('table');
         const head = E('thead');
@@ -211,6 +235,7 @@
         const equalize = TH('');
         const equalizeOwned = TH('');
         const goCash = TH('');
+        const rebalance = TH('');
 
         const eButton = E('button');
         eButton.innerText = 'equalize';
@@ -220,6 +245,9 @@
 
         const gcButton = E('button');
         gcButton.innerText = 'go cash';
+
+        const rButton = E('button');
+        rButton.innerText = 'rebalance';
 
         eButton.addEventListener('click', () => {
           marketKeys.forEach(key => targetWeights[exchange][key] = 1);
@@ -250,9 +278,91 @@
           buildExchange(exchange);
         });
 
+        rButton.addEventListener('click', () => {
+          const sells = [], buys = [];
+
+          marketKeys.forEach(key => {
+            const m = marketsFull[key][0];
+
+
+            const t = tickers[exchange];
+            if (!t) return;
+            let ticker = t.tickers[`${key}/USD`];
+            let base = 'USD';
+
+            if (ticker === undefined) {
+             ticker = t.tickers[`${key}/USDT`];
+             base = 'USDT';
+            }
+
+            const b = balances[exchange][key];
+
+            let min = 0, price = 0;
+
+            if (m.base === key) {
+              min = parseFloat(m.limits.amount.min || m.limits.cost.min);
+              if (ticker) {
+                price = parseFloat(ticker.ask);
+              }
+            }
+            else if (m.quote === key) {
+              // check this...probably wrong...
+              min = parseFloat(m.limits.amount.min);
+
+              if (ticker) {
+                price = parseFloat(ticker.bid);
+              }
+            }
+
+            const weights = targetWeights[exchange];
+            const totalWeight = Object.keys(weights).reduce((acc, tKey) => acc + parseFloat(weights[tKey] || 0), 0);
+
+            if (totalWeight > 0) {
+              const newTarget = (weights[key] || 0) / totalWeight * 100;
+
+              const newTargetDollarValue = newTarget * totalDollarValue;
+              const dollarDiff = dollarValues[key] - newTargetDollarValue;
+
+              const targetDiff = dollarValues[key] - targets[exchange][key] / 100 * totalDollarValue;
+
+              console.log({key, price, dollarDiff, targetDiff});
+              
+              if (Math.abs(targetDiff) > Math.abs(price * min) && ticker && (exchange === 'kucoin' ? Math.abs(targetDiff) > 0.1 : true))  {
+                const side = targetDiff > 0 ? 'sell' : 'buy';
+                const tprice = side === 'buy' ? ticker.ask : ticker.bid;
+                const amount = Math.abs(targetDiff) / price;
+
+                const message = [side, amount.toFixed(5), `${key}/${base}`, tprice, exchange];
+
+                (side == 'sell' ? sells : buys).push(message);
+              }
+            }
+          });
+
+          const delay = 2000;
+
+          processMessages(sells.concat(buys));
+
+          function processMessages(messages) {
+            if (messages.length === 0) return;
+
+            const m = messages.shift();
+
+            sendMessage(m);
+
+            setTimeout(() => processMessages(messages), delay);
+          }
+
+
+          function sendMessage(m) {
+            ws.send(JSON.stringify(m));
+          }
+        });
+
         ac(equalize, eButton);
         ac(equalizeOwned, eoButton);
         ac(goCash, gcButton);
+        ac(rebalance, rButton);
 
         ac(buttonRow, TH(''));
         ac(buttonRow, TH(''));
@@ -264,7 +374,7 @@
         ac(buttonRow, equalize);
         ac(buttonRow, equalizeOwned);
         ac(buttonRow, goCash);
-        ac(buttonRow, TH(''));
+        ac(buttonRow, rebalance);
         ac(buttonRow, TH(''));
 
         ac(head, buttonRow);
@@ -285,32 +395,6 @@
         ac(row, TH('trade'));
         ac(row, TH('recent trades'));
         ac(head, row);
-
-
-        let keys = Object.keys(total);
-
-        let dollarValues = {};
-        const portfolioWeight = {};
-        let totalDollarValue = 0;
-        keys.forEach(key => {
-          const t = tickers[exchange];
-          if (!t) return;
-          const ticker = t.tickers[`${key}/USD`] || t.tickers[`${key}/USDT`];
-
-          if (ticker) {
-            const value = (total[key] || 0) * ticker.bid;
-            dollarValues[key] = value;
-            totalDollarValue += value;
-          }
-          else if (key === 'USDT' || key === 'USD') {
-            const value = total[key] || 0;
-            dollarValues[key] = value;
-            totalDollarValue += value;
-          }
-          else {
-            dollarValues[key] = '';
-          }
-        });
 
         if (totalDollarValue > 0) {
           keys.forEach(key => {
